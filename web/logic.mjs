@@ -7,12 +7,39 @@ export function parseHand(line) {
   if(scale<5 || Math.hypot(a[0]-a[2],a[1]-a[3])<5) return null;
   return {x:a[0],y:a[1],bend:Math.hypot(a[0]-a[4],a[1]-a[5])/scale};
 }
-export function classify(p, points) {
-  if(points.length!==5) return 0;
-  const distances=points.map(q=>Math.hypot(p.x-q.x,p.y-q.y));
-  const i=distances.indexOf(Math.min(...distances));
-  const separation=Math.min(...points.filter((_,j)=>j!==i).map(q=>Math.hypot(q.x-points[i].x,q.y-points[i].y)));
-  return distances[i]<separation*.4 ? i+1 : 0;
+export const CORNERS=[{x:.1,y:.1},{x:.9,y:.1},{x:.9,y:.9},{x:.1,y:.9}];
+export function validCalibration(points) {
+ if(points.length!==4)return false;
+ const crosses=points.map((a,i)=>{const b=points[(i+1)%4],c=points[(i+2)%4];return (b.x-a.x)*(c.y-b.y)-(b.y-a.y)*(c.x-b.x);});
+ return crosses.every(x=>x>100)||crosses.every(x=>x< -100);
+}
+export function screenPoint(p,points) {
+ if(!validCalibration(points))return null;
+ for(const ids of [[0,1,2],[0,2,3]]) {
+  const [a,b,c]=ids.map(i=>points[i]);
+  const det=(b.y-c.y)*(a.x-c.x)+(c.x-b.x)*(a.y-c.y);
+  const u=((b.y-c.y)*(p.x-c.x)+(c.x-b.x)*(p.y-c.y))/det;
+  const v=((c.y-a.y)*(p.x-c.x)+(a.x-c.x)*(p.y-c.y))/det,w=1-u-v;
+  if(Math.min(u,v,w)>=-1e-6){const [A,B,C]=ids.map(i=>CORNERS[i]);return {x:u*A.x+v*B.x+w*C.x,y:u*A.y+v*B.y+w*C.y};}
+ }
+ return null;
+}
+export function randomPositions(random=Math.random) {
+ // Continuous positions, not a fixed set of slots. Retry if crowded.
+ for(let attempt=0;attempt<100;attempt++) {
+  const positions=[];
+  for(let tries=0;tries<500&&positions.length<5;tries++) {
+   const p={x:.18+random()*.64,y:.22+random()*.56};
+   if(positions.every(q=>Math.abs(q.x-p.x)>.18||Math.abs(q.y-p.y)>.25))positions.push(p);
+  }
+  if(positions.length===5)return positions;
+ }
+ throw new Error('Could not generate separated positions');
+}
+export function hitNumber(p,positions) {
+ if(!p)return 0;
+ const i=positions.findIndex(q=>Math.abs(q.x-p.x)<=.07&&Math.abs(q.y-p.y)<=.10);
+ return i<0?0:i+1;
 }
 export const STAGE_SECONDS = [15, 10, 5];
 export function shuffled(random = Math.random) {
@@ -21,9 +48,9 @@ export function shuffled(random = Math.random) {
   return values;
 }
 export class Round {
-  constructor() { this.stage=0; this.score=0; this.layout=[1,2,3,4,5]; this.running=false; this.pending=false; this.outcome=null; }
+  constructor() { this.stage=0; this.score=0; this.layout=[1,2,3,4,5]; this.positions=[]; this.running=false; this.pending=false; this.outcome=null; }
   start(now) { this.stage=0; this.score=0; this.beginStage(now); }
-  beginStage(now) { this.running=true; this.pending=false; this.outcome=null; this.target=1; this.layout=shuffled(); this.end=now+STAGE_SECONDS[this.stage]*1000; this.reset(); }
+  beginStage(now) { this.running=true; this.pending=false; this.outcome=null; this.target=1; this.layout=shuffled(); this.positions=randomPositions(); this.end=now+STAGE_SECONDS[this.stage]*1000; this.reset(); }
   nextStage(now) { if(!this.pending)return; this.stage++; this.beginStage(now); }
   expire(now) { if(this.running && now>=this.end) {this.running=false;this.outcome='timeout';this.reset();return true;} return false; }
   reset() { this.since=null; this.last=null; this.bend=null; this.movement=0; }

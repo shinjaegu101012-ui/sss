@@ -1,5 +1,27 @@
-import test from 'node:test';import assert from 'node:assert/strict';import {parseHand,classify,Round} from '../web/logic.mjs';
-test('packet validation and calibration regions',()=>{assert.equal(parseHand('NONE'),null);assert.equal(parseHand('HAND,,,,,,,,'),null);assert.ok(parseHand('HAND,100,100,90,90,50,50,70,70'));const points=[0,100,200,300,400].map(x=>({x,y:100}));assert.equal(classify({x:200,y:100},points),3);assert.equal(classify({x:250,y:100},points),0);});
+import test from 'node:test';import assert from 'node:assert/strict';import {parseHand,screenPoint,hitNumber,randomPositions,validCalibration,Round} from '../web/logic.mjs';
+test('packet validation and arbitrary screen hit testing',()=>{
+ assert.equal(parseHand('NONE'),null);assert.equal(parseHand('HAND,,,,,,,,'),null);assert.ok(parseHand('HAND,100,100,90,90,50,50,70,70'));
+ const points=[{x:100,y:100},{x:500,y:100},{x:500,y:400},{x:100,y:400}];
+ assert.deepEqual(screenPoint({x:300,y:250},points),{x:.5,y:.5});
+ assert.equal(hitNumber({x:.51,y:.49},[{x:.5,y:.5}]),1);
+ assert.equal(hitNumber({x:.8,y:.8},[{x:.5,y:.5}]),0);
+ assert.equal(screenPoint({x:0,y:0},points),null);
+ assert.equal(validCalibration([{x:0,y:0},{x:1,y:1},{x:2,y:2},{x:3,y:3}]),false);
+ const mirrored=points.map(p=>({x:600-p.x,y:p.y}));
+ assert.deepEqual(screenPoint({x:300,y:250},mirrored),{x:.5,y:.5});
+});
+test('continuous random positions stay inside the board and never overlap',()=>{
+ const layouts=new Set();
+ for(let run=0;run<1000;run++){
+  const positions=randomPositions();assert.equal(positions.length,5);layouts.add(JSON.stringify(positions));
+  for(let i=0;i<5;i++){
+   const p=positions[i];assert.ok(p.x-.07>=0&&p.x+.07<=1&&p.y-.1>=0&&p.y+.1<=1);
+   assert.equal(hitNumber(p,positions),i+1);
+   for(let j=0;j<i;j++)assert.ok(Math.abs(p.x-positions[j].x)>.18||Math.abs(p.y-positions[j].y)>.25);
+  }
+ }
+ assert.equal(layouts.size,1000);
+});
 test('stale data resets dwell and a wrong target earns no points',()=>{
  const g=new Round();g.start(0);const p={bend:2};
  g.update(p,2,0);assert.equal(g.score,0);
