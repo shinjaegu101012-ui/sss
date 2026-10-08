@@ -69,3 +69,18 @@ export class Round {
     this.reset();return true;
   }
 }
+
+export class CalibrationSamples {
+ constructor(){this.clear();}
+ clear(){this.values=[];}
+ add(p,now){this.values=this.values.filter(v=>now-v.at<=2500);this.values.push({...p,at:now});}
+ measure(now){
+  const values=this.values.filter(v=>now-v.at<=2500);
+  if(values.length<4||now-values.at(-1).at>1500||values.at(-1).at-values[0].at<200)return {error:'waiting',count:values.length};
+  const median=a=>{a.sort((x,y)=>x-y);return a[Math.floor(a.length/2)];};
+  const center={x:median(values.map(v=>v.x)),y:median(values.map(v=>v.y))};
+  const stable=values.filter(v=>Math.hypot(v.x-center.x,v.y-center.y)<=20);
+  if(stable.length<4||stable.length/values.length<.75)return {error:'moving',count:values.length};
+  return {point:{x:stable.reduce((s,v)=>s+v.x,0)/stable.length,y:stable.reduce((s,v)=>s+v.y,0)/stable.length},count:values.length};
+ }
+}

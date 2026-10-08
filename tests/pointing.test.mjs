@@ -47,3 +47,14 @@ test('deadline refuses late points and restart clears progress',()=>{
  assert.equal(g.update({bend:2},1,15000),false);assert.equal(g.outcome,'timeout');assert.equal(g.score,0);
  g.start(20000);assert.equal(g.stage,0);assert.equal(g.end,35000);assert.equal(g.target,1);
 });
+
+test('calibration accepts slower frames but rejects stale, unstable or missing data',async()=>{
+ const {CalibrationSamples}=await import('../web/logic.mjs');const samples=new CalibrationSamples();
+ for(let i=0;i<4;i++)samples.add({x:100+i%2,y:100},i*450);
+ assert.ok(samples.measure(1400).point);assert.equal(samples.measure(3000).error,'waiting');
+ samples.clear();assert.equal(samples.measure(1400).count,0);
+ for(let i=0;i<8;i++)samples.add({x:i%2?200:100,y:100},i*100);
+ assert.equal(samples.measure(800).error,'moving');
+ samples.clear();for(let i=0;i<5;i++)samples.add({x:i===4?300:100,y:100},i*100);
+ assert.deepEqual(samples.measure(450).point,{x:100,y:100});
+});

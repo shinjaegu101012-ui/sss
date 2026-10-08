@@ -1,6 +1,6 @@
-import {parseHand,screenPoint,hitNumber,validCalibration,CORNERS,Round,STAGE_SECONDS} from './logic.mjs?v=random-board-2';
+import {parseHand,screenPoint,hitNumber,validCalibration,CORNERS,Round,STAGE_SECONDS,CalibrationSamples} from './logic.mjs?v=calibration-4';
 const $=id=>document.getElementById(id), game=new Round();
-let port,writer,reader,latest=null,lastSeen=0,points=[],calibrating=false,samples=[],chain=Promise.resolve();
+let port,writer,reader,latest=null,lastSeen=0,points=[],calibrating=false,samples=new CalibrationSamples(),chain=Promise.resolve();
 const tiles=Array.from({length:5},(_,i)=>{const e=document.createElement('div');e.className='tile';e.innerHTML=`${i+1}<small>가리켜 주세요</small>`;$('numbers').append(e);return e;});
 function status(s){$('status').textContent=s;}
 function send(c){chain=chain.then(()=>writer?.write(new TextEncoder().encode(c))).catch(()=>status('USB 연결 오류: 다시 연결해 주세요.'));}
@@ -15,9 +15,14 @@ function render(){
 function finish(){game.expire(performance.now());send('F');render();status(`${game.stage+1}단계 시간이 끝났어요. 총 ${game.score}점입니다. 다시 도전해 보세요.`);}
 function stop(){game.running=false;game.pending=false;game.reset();send('S');render();}
 function line(s){
- const p=parseHand(s);latest=p;if(!p){game.reset();samples=[];return;}
- const now=performance.now();lastSeen=now;
- if(calibrating){samples.push(p);if(samples.length>15)samples.shift();return;}
+ const now=performance.now();
+ if(s==='READY'){ $('sensor').textContent='카메라 연결됨 · 손을 보여 주세요.';return; }
+ if(s.startsWith('ERROR')){ $('sensor').textContent='카메라 통신 실패 · I2C 설정과 배선을 확인하세요.';latest=null;samples.clear();game.reset();return; }
+ const p=parseHand(s);latest=p;
+ if(!p){game.reset();samples.clear();$('sensor').textContent=s==='NONE'?'손 1개가 필요합니다 · 손 없음, 여러 손 또는 통신 오류':'좌표를 사용할 수 없습니다 · 검지와 손목이 잘 보이게 해 주세요.';return;}
+ lastSeen=now;
+ $('sensor').textContent=`손끝 X ${p.x}, Y ${p.y} · 관절 데이터 수신 중`;
+ if(calibrating){samples.add(p,now);const result=samples.measure(now);$('sensor').textContent+=` · 보정 표본 ${result.count}개${result.point?' · 저장 가능':result.error==='moving'?' · 손을 잠시 고정해 주세요':' · 조금만 기다려 주세요'}`;return;}
  if(game.running && now>=game.end){finish();return;}
  const mapped=screenPoint(p,points);const number=hitNumber(mapped,game.positions);
  const dot=$('dot');dot.hidden=!mapped;if(mapped){dot.style.left=`${mapped.x*100}%`;dot.style.top=`${mapped.y*100}%`;}
@@ -36,15 +41,16 @@ $('connect').onclick=async()=>{
  let buffer='';const decoder=new TextDecoder();
  while(true){const {value,done}=await reader.read();if(done)break;buffer+=decoder.decode(value,{stream:true});let n;while((n=buffer.indexOf('\n'))>=0){line(buffer.slice(0,n).trim());buffer=buffer.slice(n+1);}if(buffer.length>2048)buffer='';}
  }catch{status('USB 연결을 확인하고 Arduino 시리얼 모니터를 닫아 주세요.');}
- finally{stop();latest=null;samples=[];try{reader?.releaseLock();writer?.releaseLock();await port?.close();}catch{}reader=null;writer=null;port=null;$('connect').disabled=false;$('start').disabled=true;}
+ finally{stop();latest=null;samples.clear();try{reader?.releaseLock();writer?.releaseLock();await port?.close();}catch{}reader=null;writer=null;port=null;$('connect').disabled=false;$('start').disabled=true;}
 };
-$('calibrate').onclick=()=>{stop();points=[];samples=[];calibrating=true;$('start').disabled=true;$('capture').disabled=false;status('왼쪽 위 표시를 가리키고 손을 고정한 뒤 현재 위치 저장을 눌러 주세요.');render();};
+$('calibrate').onclick=()=>{stop();points=[];samples.clear();calibrating=true;$('start').disabled=true;$('capture').disabled=false;status('왼쪽 위 표시를 가리키고 손을 고정한 뒤 현재 위치 저장을 눌러 주세요.');render();};
 $('capture').onclick=()=>{
- if(!writer||!latest||performance.now()-lastSeen>300||samples.length<8){status('손 한 개가 잘 보이도록 유지해 주세요.');return;}
- const avg={x:samples.reduce((s,p)=>s+p.x,0)/samples.length,y:samples.reduce((s,p)=>s+p.y,0)/samples.length};
- if(samples.some(p=>Math.hypot(p.x-avg.x,p.y-avg.y)>15)){status('손을 잠시 고정한 뒤 다시 저장해 주세요.');return;}
+ if(!writer){status('먼저 UNO 연결을 눌러 주세요.');return;}
+ const result=samples.measure(performance.now());
+ if(!result.point){status(result.error==='moving'?'좌표가 움직이고 있습니다. 표시를 가리킨 채 잠시 고정해 주세요.':'아직 좌표가 부족합니다. 아래 수신 상태와 보정 표본 수를 확인해 주세요.');return;}
+ const avg=result.point;
  if(points.some(p=>Math.hypot(p.x-avg.x,p.y-avg.y)<40)){status('이전 위치와 너무 가깝습니다. 손끝 위치가 구분되도록 가리켜 주세요.');return;}
- points.push(avg);samples=[];
+ points.push(avg);samples.clear();
  if(points.length===4){
  if(!validCalibration(points)){points=[];status('보정 범위가 구분되지 않습니다. 왼쪽 위부터 다시 보정해 주세요.');render();return;}calibrating=false;$('capture').disabled=true;$('start').disabled=false;status('보정 완료. 게임 시작을 눌러 주세요.');}
  else status(`${['왼쪽 위','오른쪽 위','오른쪽 아래','왼쪽 아래'][points.length]} 표시를 가리킨 뒤 현재 위치 저장을 눌러 주세요.`);
@@ -52,7 +58,7 @@ $('capture').onclick=()=>{
 };
 $('start').onclick=()=>{if(!writer||points.length!==4)return;if(game.pending)game.nextStage(performance.now());else game.start(performance.now());status(`${game.stage+1}단계: ${STAGE_SECONDS[game.stage]}초 안에 1부터 5까지 가리켜 주세요.`);render();};
 $('stop').onclick=()=>{stop();status('잠시 쉬세요. 시작 버튼으로 다시 시작할 수 있어요.');};
-setInterval(()=>{const now=performance.now();if(now-lastSeen>300){latest=null;samples=[];game.reset();$('dot').hidden=true;}if(game.running){if(now>=game.end){finish();}else $('time').textContent=Math.ceil((game.end-now)/1000);}},100);
+setInterval(()=>{const now=performance.now();if(now-lastSeen>300){latest=null;game.reset();$('dot').hidden=true;}if(now-lastSeen>1500){samples.clear();if(writer)$('sensor').textContent='최근 손 좌표가 없습니다 · 허스키렌즈 화면에서 손 인식을 확인하세요.';}if(game.running){if(now>=game.end){finish();}else $('time').textContent=Math.ceil((game.end-now)/1000);}},100);
 render();
 
 window.addEventListener("resize",()=>{stop();points=[];calibrating=false;$("capture").disabled=true;$("start").disabled=true;render();status("화면 크기가 바뀌었습니다. 위치 보정을 다시 해 주세요.");});
