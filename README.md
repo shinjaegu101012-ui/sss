@@ -64,3 +64,29 @@ node --test tests/pointing.test.mjs
 GitHub 저장소의 **Settings → Pages → Build and deployment → Source**를 **GitHub Actions**로 설정하세요. main에 푸시하면 실행되고, 설정을 나중에 켰다면 **Actions → Deploy PC game to GitHub Pages → Run workflow**로 실행합니다. 배포 성공 후 Pages 설정 또는 Actions 실행 결과의 사이트 주소로 접속하세요.
 
 HTTPS Pages 사이트에서도 PC Chrome/Edge의 Web Serial로 사용자 PC에 연결된 UNO를 선택할 수 있습니다. 사이트가 UNO에 스케치를 자동 업로드하지는 않습니다. 먼저 PointingGame 스케치를 설치하고 시리얼 모니터를 닫으세요. 접속한 PC마다 USB 연결 승인과 위치 보정이 필요합니다. 카메라 영상과 점수는 서버로 전송하지 않으며, 이 버전에는 계정이나 온라인 점수 저장 기능이 없습니다.
+
+## UNO R4의 HandResult 컴파일 오류 해결
+
+공식 라이브러리 1.0.9의 `Result.h`는 ESP 계열과 일부 NRF 보드에서만 `LARGE_MEMORY`를 활성화합니다. UNO R4는 조건에 없어 손 관절 타입과 디코딩 코드가 제외됩니다. 아래 수정은 라이브러리 전체에 적용해야 합니다. 스케치 상단에만 `#define LARGE_MEMORY`를 넣으면 라이브러리 cpp 파일과 구조가 달라져 올바른 수정이 아닙니다.
+
+먼저 IDE의 보드가 **Arduino UNO R4 WiFi**인지 확인하세요. IDE 설정의 스케치북 위치 아래 `libraries/DFRobot_HuskylensV2/Result.h`를 찾아 다음 조건을 변경합니다.
+
+기존:
+
+```cpp
+#if defined(ESP32) || defined(NRF5) || defined(ESP8266) || defined(NRF52833)
+#define LARGE_MEMORY 1
+#endif
+```
+
+변경:
+
+```cpp
+#if defined(ESP32) || defined(NRF5) || defined(ESP8266) || defined(NRF52833) || defined(ARDUINO_ARCH_RENESAS_UNO)
+#define LARGE_MEMORY 1
+#endif
+```
+
+또는 Python으로 `tools/patch_huskylens_r4.py`에 실제 라이브러리 폴더 경로를 전달하면 버전 확인과 원본 백업 후 같은 수정을 적용합니다. 라이브러리가 여러 개라면 IDE의 자세한 컴파일 출력에서 실제 사용된 경로를 확인하세요. IDE를 재시작한 뒤 다시 검증하세요. 라이브러리를 업데이트·재설치하면 수정이 사라질 수 있습니다.
+
+이 수정은 공식 1.0.9 소스의 조건을 확인해 만든 로컬 호환성 패치입니다. 실제 UNO R4 타깃 빌드와 장비 동작은 아직 별도 확인이 필요합니다.

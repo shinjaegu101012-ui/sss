@@ -1,5 +1,8 @@
 #include <Wire.h>
 #include "DFRobot_HuskylensV2.h"
+#ifndef LARGE_MEMORY
+#error "Patch the library Result.h for UNO R4 as described in README.md; do not define LARGE_MEMORY only in this sketch."
+#endif
 HuskylensV2 huskylens;
 const int BUZZER_PIN = 8;
 bool cameraReady = false;
