@@ -39,10 +39,15 @@ void loop() {
   }
   HandResult *r = static_cast<HandResult *>(huskylens.getCachedCenterResult(ALGORITHM_HAND_RECOGNITION));
   if (!r) { Serial.println("NONE"); return; }
-  // Own USB protocol: index tip, index PIP, wrist, middle MCP.
-  Serial.print("HAND,"); Serial.print(r->index_finger_tip_x); Serial.print(',');
-  Serial.print(r->index_finger_tip_y); Serial.print(',');
-  Serial.print(r->index_finger_pip_x); Serial.print(','); Serial.print(r->index_finger_pip_y); Serial.print(',');
-  Serial.print(r->wrist_x); Serial.print(','); Serial.print(r->wrist_y); Serial.print(',');
-  Serial.print(r->middle_finger_mcp_x); Serial.print(','); Serial.println(r->middle_finger_mcp_y);
+  // Own USB protocol: INDEX,MCP x/y,PIP x/y,DIP x/y,TIP x/y.
+  // Wrist and other fingers never enter the game data.
+  Serial.print("INDEX,");
+  Serial.print(r->index_finger_mcp_x); Serial.print(',');
+  Serial.print(r->index_finger_mcp_y); Serial.print(',');
+  Serial.print(r->index_finger_pip_x); Serial.print(',');
+  Serial.print(r->index_finger_pip_y); Serial.print(',');
+  Serial.print(r->index_finger_dip_x); Serial.print(',');
+  Serial.print(r->index_finger_dip_y); Serial.print(',');
+  Serial.print(r->index_finger_tip_x); Serial.print(',');
+  Serial.println(r->index_finger_tip_y);
 }

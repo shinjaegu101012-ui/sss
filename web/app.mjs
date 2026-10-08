@@ -1,4 +1,4 @@
-import {parseHand,screenPoint,hitNumber,validCalibration,CORNERS,Round,STAGE_SECONDS,CalibrationSamples} from './logic.mjs?v=serial-5';
+import {parseHand,screenPoint,hitNumber,validCalibration,CORNERS,Round,STAGE_SECONDS,CalibrationSamples} from './logic.mjs?v=index-only-6';
 const $=id=>document.getElementById(id), game=new Round();
 let port,writer,reader,latest=null,lastSeen=0,points=[],calibrating=false,samples=new CalibrationSamples(),chain=Promise.resolve();
 const tiles=Array.from({length:5},(_,i)=>{const e=document.createElement('div');e.className='tile';e.innerHTML=`${i+1}<small>가리켜 주세요</small>`;$('numbers').append(e);return e;});
@@ -21,7 +21,7 @@ function line(s){
  const p=parseHand(s);latest=p;
  if(!p){game.reset();samples.clear();$('sensor').textContent=s==='NONE'?'손 1개가 필요합니다 · 손 없음, 여러 손 또는 통신 오류':'좌표를 사용할 수 없습니다 · 검지와 손목이 잘 보이게 해 주세요.';return;}
  lastSeen=now;
- $('sensor').textContent=`손끝 X ${p.x}, Y ${p.y} · 관절 데이터 수신 중`;
+ $('sensor').textContent=`손끝 X ${p.x}, Y ${p.y} · 검지 좌표 수신 중${p.bend===null?' · 이전 스케치: 움직임 보너스 없음':''}`;
  if(calibrating){samples.add(p,now);const result=samples.measure(now);$('sensor').textContent+=` · 보정 표본 ${result.count}개${result.point?' · 저장 가능':result.error==='moving'?' · 손을 잠시 고정해 주세요':' · 조금만 기다려 주세요'}`;return;}
  if(game.running && now>=game.end){finish();return;}
  const mapped=screenPoint(p,points);const number=hitNumber(mapped,game.positions);

@@ -1,11 +1,20 @@
+// The game uses only index-finger coordinates. Legacy packets still allow
+// positioning; index joint bonuses require the new INDEX packet.
 export function parseHand(line) {
-  const parts=line.trim().split(',');
-  if(parts.length!==9 || parts[0]!=='HAND' || parts.slice(1).some(x=>!/^\d+$/.test(x))) return null;
-  const a=parts.slice(1).map(Number);
-  if(a.some(x=>x>4096)) return null;
-  const scale=Math.hypot(a[6]-a[4],a[7]-a[5]);
-  if(scale<5 || Math.hypot(a[0]-a[2],a[1]-a[3])<5) return null;
-  return {x:a[0],y:a[1],bend:Math.hypot(a[0]-a[4],a[1]-a[5])/scale};
+ const parts=line.trim().split(',');
+ if(parts.length!==9 || !['HAND','INDEX'].includes(parts[0]))return null;
+ const coords=parts.slice(1,parts[0]==='HAND'?5:9);
+ if(coords.some(x=>!/^\d+$/.test(x)))return null;
+ const a=coords.map(Number);if(a.some(x=>x>4096))return null;
+ if(parts[0]==='HAND'){
+  if(Math.hypot(a[0]-a[2],a[1]-a[3])<2)return null;
+  return {x:a[0],y:a[1],bend:null};
+ }
+ // MCP -> PIP -> DIP -> TIP. Extension ratio uses this finger only.
+ const lengths=[0,2,4].map(i=>Math.hypot(a[i+2]-a[i],a[i+3]-a[i+1]));
+ if(lengths.some(x=>x<2))return null;
+ const total=lengths.reduce((sum,x)=>sum+x,0);
+ return {x:a[6],y:a[7],bend:Math.hypot(a[6]-a[0],a[7]-a[1])/total};
 }
 export const CORNERS=[{x:.1,y:.1},{x:.9,y:.1},{x:.9,y:.9},{x:.1,y:.9}];
 export function validCalibration(points) {
@@ -58,7 +67,7 @@ export class Round {
     if(!this.running || this.expire(now)) return false;
     if(!p || (this.last!==null && now-this.last>300)) this.reset();
     if(!p) return false;
-    if(this.bend!==null) { const delta=Math.abs(p.bend-this.bend); if(delta>.08 && delta<.8) this.movement=Math.min(2,this.movement+delta); }
+    if(Number.isFinite(p.bend) && Number.isFinite(this.bend)) { const delta=Math.abs(p.bend-this.bend); if(delta>.08 && delta<.8) this.movement=Math.min(2,this.movement+delta); }
     this.bend=p.bend; this.last=now;
     if(number!==this.target) {this.since=null;return false;}
     if(this.since===null) this.since=now;

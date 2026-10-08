@@ -58,3 +58,16 @@ test('calibration accepts slower frames but rejects stale, unstable or missing d
  samples.clear();for(let i=0;i<5;i++)samples.add({x:i===4?300:100,y:100},i*100);
  assert.deepEqual(samples.measure(450).point,{x:100,y:100});
 });
+
+test('only index coordinates affect position and movement',()=>{
+ const a=parseHand('HAND,100,100,90,90,0,0,0,0');
+ const b=parseHand('HAND,100,100,90,90,9999,9999,9999,9999');
+ assert.deepEqual(a,b);assert.equal(a.bend,null);
+ const straight=parseHand('INDEX,100,100,100,120,100,140,100,160');
+ assert.deepEqual(straight,{x:100,y:160,bend:1});
+ const bent=parseHand('INDEX,100,100,100,120,120,120,120,100');
+ assert.ok(bent.bend<straight.bend);
+ assert.equal(parseHand('INDEX,100,100,100,100,120,120,120,100'),null);
+ const shifted=parseHand('INDEX,200,200,200,220,200,240,200,260');assert.equal(shifted.bend,straight.bend);
+ const g=new Round();g.start(0);for(let t=0;t<=700;t+=100)g.update(a,1,t);assert.equal(g.score,10);
+});
