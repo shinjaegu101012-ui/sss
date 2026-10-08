@@ -48,7 +48,7 @@ export function shuffled(random = Math.random) {
   return values;
 }
 export class Round {
-  constructor() { this.stage=0; this.score=0; this.layout=[1,2,3,4,5]; this.positions=[]; this.running=false; this.pending=false; this.outcome=null; }
+  constructor() { this.stage=0; this.score=0; this.layout=[1,2,3,4,5]; this.positions=randomPositions(); this.running=false; this.pending=false; this.outcome=null; }
   start(now) { this.stage=0; this.score=0; this.beginStage(now); }
   beginStage(now) { this.running=true; this.pending=false; this.outcome=null; this.target=1; this.layout=shuffled(); this.positions=randomPositions(); this.end=now+STAGE_SECONDS[this.stage]*1000; this.reset(); }
   nextStage(now) { if(!this.pending)return; this.stage++; this.beginStage(now); }

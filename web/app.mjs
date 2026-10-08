@@ -1,4 +1,4 @@
-import {parseHand,screenPoint,hitNumber,validCalibration,CORNERS,Round,STAGE_SECONDS} from './logic.mjs';
+import {parseHand,screenPoint,hitNumber,validCalibration,CORNERS,Round,STAGE_SECONDS} from './logic.mjs?v=random-board-2';
 const $=id=>document.getElementById(id), game=new Round();
 let port,writer,reader,latest=null,lastSeen=0,points=[],calibrating=false,samples=[],chain=Promise.resolve();
 const tiles=Array.from({length:5},(_,i)=>{const e=document.createElement('div');e.className='tile';e.innerHTML=`${i+1}<small>가리켜 주세요</small>`;$('numbers').append(e);return e;});
