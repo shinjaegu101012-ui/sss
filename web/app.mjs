@@ -1,9 +1,9 @@
-import {parseHand,screenPoint,hitNumber,validCalibration,CORNERS,Round,STAGE_SECONDS,CalibrationSamples} from './logic.mjs?v=calibration-4';
+import {parseHand,screenPoint,hitNumber,validCalibration,CORNERS,Round,STAGE_SECONDS,CalibrationSamples} from './logic.mjs?v=serial-5';
 const $=id=>document.getElementById(id), game=new Round();
 let port,writer,reader,latest=null,lastSeen=0,points=[],calibrating=false,samples=new CalibrationSamples(),chain=Promise.resolve();
 const tiles=Array.from({length:5},(_,i)=>{const e=document.createElement('div');e.className='tile';e.innerHTML=`${i+1}<small>가리켜 주세요</small>`;$('numbers').append(e);return e;});
 function status(s){$('status').textContent=s;}
-function send(c){chain=chain.then(()=>writer?.write(new TextEncoder().encode(c))).catch(()=>status('USB 연결 오류: 다시 연결해 주세요.'));}
+function send(c){const destination=writer;chain=chain.then(()=>destination?.write(new TextEncoder().encode(c))).catch(e=>status(`버저 명령 전송 실패 (${e.name}): ${e.message}`));}
 function render(){
  tiles.forEach((e,i)=>{const point=game.positions[i];e.hidden=calibrating||!point;e.innerHTML=`${i+1}<small>가리켜 주세요</small>`;if(point){e.style.left=`${point.x*100}%`;e.style.top=`${point.y*100}%`;}e.classList.toggle('active',game.running&&i+1===game.target);});
  const marker=$('marker');marker.hidden=!calibrating;if(calibrating)$('dot').hidden=true;
@@ -37,12 +37,26 @@ function line(s){
 $('connect').onclick=async()=>{
  if(!navigator.serial){status('PC Chrome 또는 Edge를 사용해 주세요.');return;}
  $('connect').disabled=true;
- try{port=await navigator.serial.requestPort();await port.open({baudRate:115200});writer=port.writable.getWriter();reader=port.readable.getReader();status('연결됨. 위치 보정을 시작해 주세요.');
+ let phase='포트 선택';
+ try{port=await navigator.serial.requestPort();phase='포트 열기';await port.open({baudRate:115200});phase='데이터 수신';writer=port.writable.getWriter();reader=port.readable.getReader();$('disconnect').disabled=false;$('calibrate').disabled=false;$('sensor').textContent='UNO USB 연결됨 · 카메라 데이터를 기다리는 중';status('연결됨. 위치 보정을 시작해 주세요.');
  let buffer='';const decoder=new TextDecoder();
  while(true){const {value,done}=await reader.read();if(done)break;buffer+=decoder.decode(value,{stream:true});let n;while((n=buffer.indexOf('\n'))>=0){line(buffer.slice(0,n).trim());buffer=buffer.slice(n+1);}if(buffer.length>2048)buffer='';}
- }catch{status('USB 연결을 확인하고 Arduino 시리얼 모니터를 닫아 주세요.');}
- finally{stop();latest=null;samples.clear();try{reader?.releaseLock();writer?.releaseLock();await port?.close();}catch{}reader=null;writer=null;port=null;$('connect').disabled=false;$('start').disabled=true;}
+ }catch(e){
+ const advice=phase==='포트 선택'?'포트 선택을 취소했다면 UNO 연결을 다시 누르세요.':phase==='포트 열기'?'Arduino 시리얼 모니터와 다른 게임 탭을 닫고 USB를 다시 연결하세요.':e instanceof DOMException?'USB 연결이 끊겼거나 수신에 실패했습니다. USB를 다시 연결하세요.':'페이지 처리 오류가 발생했습니다. 아래 오류 내용을 알려 주세요.';
+ status(`${phase} 실패 (${e.name}): ${e.message} · ${advice}`);
+ }
+ finally{
+  game.running=false;game.pending=false;game.reset();latest=null;samples.clear();calibrating=false;
+  await chain;
+  try{reader?.releaseLock();}catch{}
+  try{writer?.releaseLock();}catch{}
+  try{await port?.close();}catch{}
+  reader=null;writer=null;port=null;render();
+  $('connect').disabled=false;$('disconnect').disabled=true;$('calibrate').disabled=true;$('capture').disabled=true;$('start').disabled=true;
+  $('sensor').textContent='UNO USB 미연결';
+ }
 };
+$('disconnect').onclick=async()=>{stop();await chain;status('UNO 연결을 해제했습니다. 다시 연결할 수 있습니다.');await reader?.cancel();};
 $('calibrate').onclick=()=>{stop();points=[];samples.clear();calibrating=true;$('start').disabled=true;$('capture').disabled=false;status('왼쪽 위 표시를 가리키고 손을 고정한 뒤 현재 위치 저장을 눌러 주세요.');render();};
 $('capture').onclick=()=>{
  if(!writer){status('먼저 UNO 연결을 눌러 주세요.');return;}
