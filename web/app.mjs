@@ -1,18 +1,30 @@
-import {parseHand,classify,Round} from './logic.mjs';
+import {parseHand,classify,Round,STAGE_SECONDS} from './logic.mjs';
 const $=id=>document.getElementById(id), game=new Round();
 let port,writer,reader,latest=null,lastSeen=0,points=[],calibrating=false,samples=[],chain=Promise.resolve();
 const tiles=Array.from({length:5},(_,i)=>{const e=document.createElement('div');e.className='tile';e.innerHTML=`${i+1}<small>가리켜 주세요</small>`;$('numbers').append(e);return e;});
 function status(s){$('status').textContent=s;}
 function send(c){chain=chain.then(()=>writer?.write(new TextEncoder().encode(c))).catch(()=>status('USB 연결 오류: 다시 연결해 주세요.'));}
-function render(){tiles.forEach((e,i)=>e.classList.toggle('active',i+1===(calibrating?points.length+1:game.running?game.target:0)));$('score').textContent=game.score||0;}
-function finish(){stop();send('F');$('time').textContent=0;status(`수고하셨어요! 총 ${game.score}점입니다.`);}
-function stop(){game.running=false;game.reset();send('S');render();}
+function render(){
+ tiles.forEach((e,i)=>{const number=calibrating?i+1:game.layout[i]; e.innerHTML=`${number}<small>가리켜 주세요</small>`;e.classList.toggle('active',calibrating?i===points.length:game.running&&number===game.target);});
+ $('score').textContent=game.score; $('stage').textContent=game.stage+1;
+ $('start').textContent=game.pending?'다음 단계 시작':'게임 시작';
+ $('time').textContent=game.running?Math.max(0,Math.ceil((game.end-performance.now())/1000)):game.outcome==='timeout'?0:STAGE_SECONDS[game.pending?game.stage+1:game.stage];
+}
+function finish(){game.expire(performance.now());send('F');render();status(`${game.stage+1}단계 시간이 끝났어요. 총 ${game.score}점입니다. 다시 도전해 보세요.`);}
+function stop(){game.running=false;game.pending=false;game.reset();send('S');render();}
 function line(s){
  const p=parseHand(s);latest=p;if(!p){game.reset();samples=[];return;}
  const now=performance.now();lastSeen=now;
  if(calibrating){samples.push(p);if(samples.length>15)samples.shift();return;}
  if(game.running && now>=game.end){finish();return;}
- if(game.update(p,classify(p,points),now)){send('C');status(`잘하셨어요! 다음은 ${game.target}번입니다.`);render();}
+ const slot=classify(p,points); const number=slot?game.layout[slot-1]:0;
+ if(game.update(p,number,now)){
+   send(game.outcome==='won'?'F':'C');
+   if(game.pending) status(`${game.stage+1}단계 성공! 다음 단계 시작을 누르세요. 다음은 ${STAGE_SECONDS[game.stage+1]}초입니다.`);
+   else if(game.outcome==='won') status(`3단계 모두 성공! 총 ${game.score}점입니다.`);
+   else status(`잘하셨어요! 다음은 ${game.target}번입니다.`);
+   render();
+ }
 }
 $('connect').onclick=async()=>{
  if(!navigator.serial){status('PC Chrome 또는 Edge를 사용해 주세요.');return;}
@@ -34,7 +46,7 @@ $('capture').onclick=()=>{
  else status(`${points.length+1}번을 가리킨 뒤 현재 위치 저장을 눌러 주세요.`);
  render();
 };
-$('start').onclick=()=>{if(!writer||points.length!==5)return;game.start(performance.now());status('1번을 가리켜 주세요.');render();};
+$('start').onclick=()=>{if(!writer||points.length!==5)return;if(game.pending)game.nextStage(performance.now());else game.start(performance.now());status(`${game.stage+1}단계: ${STAGE_SECONDS[game.stage]}초 안에 1부터 5까지 가리켜 주세요.`);render();};
 $('stop').onclick=()=>{stop();status('잠시 쉬세요. 시작 버튼으로 다시 시작할 수 있어요.');};
 setInterval(()=>{const now=performance.now();if(now-lastSeen>300){latest=null;samples=[];game.reset();}if(game.running){if(now>=game.end){finish();}else $('time').textContent=Math.ceil((game.end-now)/1000);}},100);
 render();

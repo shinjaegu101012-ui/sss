@@ -14,12 +14,21 @@ export function classify(p, points) {
   const separation=Math.min(...points.filter((_,j)=>j!==i).map(q=>Math.hypot(q.x-points[i].x,q.y-points[i].y)));
   return distances[i]<separation*.4 ? i+1 : 0;
 }
+export const STAGE_SECONDS = [15, 10, 5];
+export function shuffled(random = Math.random) {
+  const values = [1,2,3,4,5];
+  for(let i=4;i>0;i--) { const j=Math.floor(random()*(i+1)); [values[i],values[j]]=[values[j],values[i]]; }
+  return values;
+}
 export class Round {
-  start(now) { this.running=true; this.target=1; this.score=0; this.end=now+60000; this.reset(); }
+  constructor() { this.stage=0; this.score=0; this.layout=[1,2,3,4,5]; this.running=false; this.pending=false; this.outcome=null; }
+  start(now) { this.stage=0; this.score=0; this.beginStage(now); }
+  beginStage(now) { this.running=true; this.pending=false; this.outcome=null; this.target=1; this.layout=shuffled(); this.end=now+STAGE_SECONDS[this.stage]*1000; this.reset(); }
+  nextStage(now) { if(!this.pending)return; this.stage++; this.beginStage(now); }
+  expire(now) { if(this.running && now>=this.end) {this.running=false;this.outcome='timeout';this.reset();return true;} return false; }
   reset() { this.since=null; this.last=null; this.bend=null; this.movement=0; }
   update(p,number,now) {
-    if(!this.running) return false;
-    if(now>=this.end) {this.running=false;this.reset();return false;}
+    if(!this.running || this.expire(now)) return false;
     if(!p || (this.last!==null && now-this.last>300)) this.reset();
     if(!p) return false;
     if(this.bend!==null) { const delta=Math.abs(p.bend-this.bend); if(delta>.08 && delta<.8) this.movement=Math.min(2,this.movement+delta); }
@@ -28,6 +37,8 @@ export class Round {
     if(this.since===null) this.since=now;
     if(now-this.since<700) return false;
     this.score+=10+Math.min(5,Math.floor(this.movement*2.5));
-    this.target=this.target%5+1;this.reset();return true;
+    if(this.target===5) { this.running=false; this.pending=this.stage<2; this.outcome=this.pending?'stage-clear':'won'; }
+    else this.target++;
+    this.reset();return true;
   }
 }
